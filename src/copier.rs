@@ -1,11 +1,11 @@
 
 use std::io::Result;
 use std::io::{Read, Write};
-use crate::messages::{Command, Status, Shared};
+use crate::messages::{GUICommand, Shared};
 use std::thread::sleep;
 use std::sync::{Arc, Mutex};
 use std::borrow::BorrowMut;
-use crate::blockcopy::{BufferBlockCopy, BlockCopy};
+use crate::blockcopy::{BlockCopy};
 use std::time::Duration;
 use std::ops::DerefMut;
 
@@ -22,57 +22,63 @@ impl Copier {
         }
     }
 
+    pub fn paused(&self) -> bool {
+        self.paused
+    }
+
     //A buffered copy from reader to writer.
     //Similar to std::io::copy, but after every block, check for pause/play/stop, and report back the progress
-    pub fn copy<R: Read, W: Write, B: BlockCopy>(& mut self, reader: &mut R, writer: &mut W, block_copier: & B) -> Result<u64> {
-        let mut buffer = vec![0u8; block_copier.bytes_per_block() as usize];
+    pub fn copy<R: Read, W: Write, B: BlockCopy>(
+        & mut self,
+        reader: &mut R,
+        writer: &mut W,
+        block_copier: & B,
+        buffer: & mut [u8]) -> Result<(u64, bool)> {
 
-        let mut written = 0;
+        //If we are paused, sleep for a bit
+        let (len, paused) = if self.paused {
+            //Put the thread to sleep for 100ms
+            sleep(Duration::new(0, 1000 * 1000 * 100));
+            (0, true)
+        } else {
 
-        loop {
-
-            //If we are paused, sleep for a bit
-            if self.paused {
-                //Put the thread to sleep for 100ms
-                sleep(Duration::new(0, 1000 * 1000 * 100));
-            } else {
-
-                //Copy a block. If the copy returns an error, stop and return the error
-                let len = match block_copier.copy_block(reader, writer, buffer.borrow_mut()) {
-                    Ok(0) => return Ok(written),
-                    Ok(len) => len,
-                    Err(e) => return Err(e),
-                };
-
-                written += len;
+            //Copy a block. If the copy returns an error, stop and return the error
+            match block_copier.copy_block(reader, writer, buffer.borrow_mut()) {
+                Ok(0) => return Ok((0, false)),
+                Ok(len) => (len, false),
+                Err(e) => return Err(e),
             }
+        };
 
-            //Acquire the lock and a reference to the shared data
+        //Acquire the lock and a reference to the shared data
+        {
             let mut lock = self.shared.lock();
             let mut shared = lock.as_mut().unwrap().deref_mut();
 
             //Check the 'command' field to see if a pause/stop/play has been initiated
-            if shared.command.is_some() {
-
-                match shared.command.as_ref().unwrap() {
-                    Command::Pause => {
+            if shared.gui_command.is_some() {
+                match shared.gui_command.as_ref().unwrap() {
+                    GUICommand::Pause => {
                         self.paused = true;
                     }
-                    Command::Play => {
+                    GUICommand::Resume => {
                         self.paused = false;
                     }
-                    Command::Stop => {
-                        return Ok(written);
-                    }
+                    GUICommand::Stop => {}
                 }
 
-                shared.command = None;
-
+                shared.gui_command = None;
             }
 
-            //Report back the number of bytes written so far
-            shared.status = Status::new(written, self.paused);
+            //Update the total number of bytes copied for all files
+            shared.status.overall += len;
 
+            shared.status.paused = self.paused;
+
+            shared.status.progress += len;
         }
+
+        Ok((len, paused))
+
     }
 }

@@ -22,7 +22,7 @@ impl BlockCopy for BufferBlockCopy {
         let len = reader.read(buffer)?;
 
         //Copy from buffer into reader
-        writer.write_all(buffer)?;
+        writer.write_all(&buffer[..len])?;
 
         Ok(len as u64)
     }
