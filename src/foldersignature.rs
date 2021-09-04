@@ -82,6 +82,10 @@ impl FolderSignature {
         self.total_size
     }
 
+    pub fn overall_offset(&self) -> u64 {
+        self.copied_map.iter().fold(0, |acc, (_, (bytes_copied, _))| acc + bytes_copied)
+    }
+
     //Load an existing 'FolderSignature' object from a file
     pub fn load_ron<P: AsRef<Path>>(path: P) -> Self {
         let mut file = OpenOptions::new()
@@ -100,6 +104,7 @@ impl FolderSignature {
         let mut file = OpenOptions::new()
             .write(true)
             .truncate(true)
+            .create(true)
             .open(path).unwrap();
 
         file.write_all(ron::to_string(&self).unwrap().as_bytes()).unwrap();
