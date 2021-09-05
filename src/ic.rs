@@ -39,6 +39,8 @@ impl IC {
         sender: Sender<CopierMessage>,) -> Self
         where PathBuf: From<P> {
 
+        let overall_copied = signature.overall_offset();
+
         Self {
             destination_base_path: PathBuf::from(destination_base_path),
             signature,
@@ -48,7 +50,7 @@ impl IC {
             sender,
 
             file_copied: 0,
-            overall_copied: 0
+            overall_copied
         }
     }
 
@@ -58,14 +60,12 @@ impl IC {
 
         let mut buffer = vec![0u8; BufferBlockCopy.bytes_per_block() as usize];
 
-        let overall_offset = self.signature.overall_offset();
-
         for (path, (bytes_copied, file_size)) in self.signature.copied_map.iter_mut() {
 
             let destination_file_path = self.destination_base_path.clone().join(path);
             let source_file_path = self.signature.base_path.clone().join(path);
 
-            let file_offset = *bytes_copied;
+            self.file_copied = *bytes_copied;
 
             self.sender.send(CopierMessage::StartFile { file_size: *file_size , file_path: String::from(path.to_str().unwrap()) }).unwrap();
 
@@ -116,7 +116,7 @@ impl IC {
                             GUIMessage::Resume => {self.paused = false;}
                             GUIMessage::Stop => {return Ok(());}
                             GUIMessage::Request => {
-                                self.sender.send(CopierMessage::Progress(self.file_copied + file_offset, self.overall_copied + overall_offset)).unwrap();
+                                self.sender.send(CopierMessage::Progress(self.file_copied, self.overall_copied)).unwrap();
                             }
                         }
                     }
@@ -133,5 +133,9 @@ impl IC {
         Ok(())
 
     }
-    
+
+    pub fn signature(&self) -> &FolderSignature {
+        &self.signature
+    }
+
 }

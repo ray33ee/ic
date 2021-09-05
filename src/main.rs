@@ -22,8 +22,8 @@ fn main() {
     let (c_send, c_recv) = channel();
 
 
-    //let fs = FolderSignature::new("E:\\Software Projects\\IntelliJ\\ic\\source");
-    let fs = FolderSignature::load_ron("E:\\Software Projects\\IntelliJ\\ic\\saved.ron");
+    let fs = FolderSignature::new("E:\\Software Projects\\IntelliJ\\ic\\source");
+    //let fs = FolderSignature::load_ron("E:\\Software Projects\\IntelliJ\\ic\\saved.ron");
 
     let overall_size = fs.overall_size();
 
@@ -46,11 +46,11 @@ fn main() {
 
     loop {
 
-        let overall_progress = gui.update();
-
-        if overall_progress == overall_size {
-            gui.finish();
-            break;
+        match gui.update() {
+            Ok(_) => {}
+            Err(_) => {
+                break;
+            }
         }
 
         thread::sleep(Duration::from_millis(100));

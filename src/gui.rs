@@ -3,18 +3,15 @@
 //Must also detect and pass on key events
 //Each progress bar must display time elapsed, eta, bytes copied over total bytes, and transfer rate
 
-use std::sync::mpsc::{Sender, Receiver};
+use std::sync::mpsc::{Sender, Receiver, SendError};
 use crate::messages::{CopierMessage, GUIMessage};
 use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
 use std::time::Duration;
 use crossterm::event::{read, poll, Event, KeyCode};
 
 pub struct GUI {
-    //shared: Arc<Mutex<Shared>>,
     current_file: ProgressBar,
     overall: ProgressBar,
-    //multi: MultiProgress,
-    stopped: bool,
 
     sender: Sender<GUIMessage>,
     receiver: Receiver<CopierMessage>,
@@ -48,8 +45,7 @@ impl GUI {
         Self {
             current_file,
             overall,
-            //multi,
-            stopped: false,
+
             sender,
             receiver,
         }
@@ -57,10 +53,8 @@ impl GUI {
 
     //Look at the shared memory and update the progress bar
     //Look at the keyboard events and update the shared memory
-    pub fn update(& mut self) -> u64 {
+    pub fn update(& mut self) -> Result<(), ()> {
 
-        //Send a message to the copier. The copier should respond with a CopierMessage::Progress object
-        self.sender.send(GUIMessage::Request).unwrap();
 
         //Check to see if a keyboard button has been pressed
         if let Ok(true) = poll(Duration::from_secs(0)) {
@@ -69,26 +63,31 @@ impl GUI {
                 Event::Key(event) => {
                     match event.code {
                         KeyCode::Char('p') => {
-                            self.overall.set_message("Paused.");
-                            self.sender.send(GUIMessage::Pause).unwrap();
+                            self.pause();
                         },
                         KeyCode::Char('s') => {
-                            self.overall.set_message("Copying...");
-                            self.current_file.reset_eta();
-                            self.overall.reset_eta();
-                            self.sender.send(GUIMessage::Resume).unwrap();
+                            self.resume();
                         },
                         KeyCode::Char('q') => {
-                            self.overall.set_message("Stopped.");
-                            self.stopped = true;
                             self.stop();
-                            self.sender.send(GUIMessage::Stop).unwrap();
+                            return Err(());
                         },
 
                         _ => {}
                     }
                 }
                 _ => {}
+            }
+        }
+
+
+
+        //Send a message to the copier. The copier should respond with a CopierMessage::Progress object
+        match self.sender.send(GUIMessage::Request) {
+            Ok(_) => {}
+            Err(_) => {
+                self.finish();
+                return Err(());
             }
         }
 
@@ -111,14 +110,28 @@ impl GUI {
                             self.current_file.set_position(self.current_file.length());
                             self.overall.set_position(self.overall.length());
                             self.finish();
+                            return Err(())
                         }
                     }
                 }
                 Err(_) => {}
             }
         }
-        0
 
+        Ok(())
+
+    }
+
+    pub fn resume(&self) {
+        self.overall.set_message("Copying...");
+        self.current_file.reset_eta();
+        self.overall.reset_eta();
+        self.sender.send(GUIMessage::Resume).unwrap();
+    }
+
+    pub fn pause(&self) {
+        self.overall.set_message("Paused.");
+        self.sender.send(GUIMessage::Pause).unwrap();
     }
 
     //Call this function when all the copies have finished
@@ -131,10 +144,13 @@ impl GUI {
 
     //Call this function when the copies have been forcibly stopped
     pub fn stop(&self) {
+        self.sender.send(GUIMessage::Stop).unwrap();
+        self.overall.set_message("Stopped.");
 
-        self.current_file.finish();
-        self.overall.finish_with_message("STOPPED");
+        self.current_file.abandon();
+        self.overall.abandon_with_message("STOPPED");
+
+        self.overall.set_message("STOPPED");
     }
 
 }
-

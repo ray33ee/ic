@@ -5,11 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 ### To Do
-- Rewrite the code as it is messy. But first, implement...
-  - Figure out the command line options, then add them via Clap
-  - Implement Stop system (via key event and sigterm) 
+- Figure out the command line options, then add them via Clap
+- Implement Stop system (via key event and sigterm) 
+- Create more robust error handling (via custom `Error` and `ErrorKind` types)
 
 ### Unfinished Ideas
+
+## [0.1.3] - 2021-09-04
+### Added
+- Error handling on sending of 'Request' (which can fail if the receiver is destroyed)
+- Adde pause, stop and resume functions to gui
 
 ## [0.1.2] - 2021-09-02
 ### Added
